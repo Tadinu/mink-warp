@@ -65,6 +65,7 @@ class Configuration:
             self._v_wp = wp.zeros((nworld, model.nv), dtype=float)
             self._dt_wp = wp.zeros(1, dtype=float)
 
+        self._kin_stamp = 0
         if q is None:
             q = np.broadcast_to(model.qpos0, (nworld, model.nq)).copy()
         self.update(q=q)
@@ -81,6 +82,7 @@ class Configuration:
                 self._assign_qpos(q)
             mjwarp.kinematics(self.wp_model, self.wp_data)
             mjwarp.com_pos(self.wp_model, self.wp_data)
+            self._kin_stamp += 1
 
     def update_from_keyframe(self, key_name: str) -> None:
         key_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_KEY, key_name)
@@ -208,6 +210,7 @@ class Configuration:
             wp.copy(self.wp_data.qpos, self._q_out_wp)
             mjwarp.kinematics(self.wp_model, self.wp_data)
             mjwarp.com_pos(self.wp_model, self.wp_data)
+            self._kin_stamp += 1
 
     def _integrate_qpos(
         self,
@@ -250,6 +253,11 @@ class Configuration:
 
         v_wp = to_wp(velocity, dtype=float, device=self.device)
         return self._as_velocity_batch(v_wp)
+
+    @property
+    def kin_stamp(self) -> int:
+        """Increments after each FK refresh (``update`` / ``integrate_inplace``)."""
+        return self._kin_stamp
 
     @property
     def q(self) -> wp.array:

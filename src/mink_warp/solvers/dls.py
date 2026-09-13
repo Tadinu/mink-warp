@@ -166,7 +166,7 @@ class DLSSolver(Solver):
                 k = int(W.shape[1])
                 wp.launch(
                     accumulate_normal_equations,
-                    dim=nworld,
+                    dim=(nworld, nv, nv),
                     inputs=[W, e, mu, k, nv, self.H, self.c, self.mu_total],
                 )
             wp.launch(

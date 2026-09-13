@@ -17,12 +17,13 @@ def weighted_residual(
     weighted_err: wp.array2d[float],
     mu_out: wp.array[float],
 ):
-    worldid = wp.tid()
-    mu = float(0.0)
-    for i in range(k):
-        we = cost[i] * (-gain * error[worldid, i])
-        weighted_err[worldid, i] = we
-        mu += we * we
-        for j in range(nv):
-            weighted_jac[worldid, i, j] = cost[i] * jacobian[worldid, i, j]
-    mu_out[worldid] = lm_damping * mu
+    """Weight one residual row. Launch ``dim=(nworld, k)``; zero ``mu_out`` first."""
+    worldid, i = wp.tid()
+    if i >= k:
+        return
+    we = cost[i] * (-gain * error[worldid, i])
+    weighted_err[worldid, i] = we
+    for j in range(nv):
+        weighted_jac[worldid, i, j] = cost[i] * jacobian[worldid, i, j]
+    if lm_damping != 0.0:
+        wp.atomic_add(mu_out, worldid, lm_damping * we * we)

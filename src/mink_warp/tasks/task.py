@@ -176,9 +176,10 @@ class Task(abc.ABC):
             # Refresh the device cost buffer if a cost setter nulled it
             # (same path the LM / L-BFGS accessors take).
             self._ensure_cost_dev(configuration)
+            self._mu.zero_()
             wp.launch(
                 weighted_residual,
-                dim=configuration.nworld,
+                dim=(configuration.nworld, self.k),
                 inputs=[
                     self._error,
                     self._jacobian,

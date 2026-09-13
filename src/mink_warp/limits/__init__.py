@@ -6,6 +6,7 @@ from .collision_avoidance import CollisionAvoidanceLimit
 from .configuration_limit import ConfigurationLimit
 from .limit import Limit
 from .linear_inequality import LinearInequalityLimit
+from .slot_height import SlotHeightLimit
 from .velocity_limit import VelocityLimit
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "VelocityLimit",
     "LinearInequalityLimit",
     "CollisionAvoidanceLimit",
+    "SlotHeightLimit",
 ]

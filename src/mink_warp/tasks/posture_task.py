@@ -59,7 +59,8 @@ class PostureTask(TargetedTask):
         if not np.all(cost >= 0.0):
             raise TaskDefinitionError("cost must be >= 0")
         self.cost[: self.k] = cost
-        self._cost_dev = None
+        if self._cost_dev is not None:
+            self._cost_dev.assign(self.cost.astype(np.float32))
 
     def set_target(
         self,

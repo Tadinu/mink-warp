@@ -39,19 +39,26 @@ def accumulate_normal_equations(
     c: wp.array2d[float],
     mu_total: wp.array[float],
 ):
-    """Accumulate H += WᵀW, c += -eᵀW, mu_total += mu (Mink residual form)."""
-    worldid = wp.tid()
-    mu_total[worldid] += mu[worldid]
-    for i in range(nv):
+    """Accumulate H += WᵀW, c += -eᵀW, mu_total += mu (Mink residual form).
+
+    Launched with ``dim=(nworld, nv, nv)`` so each thread loops the residual
+    length ``k`` once. A single-thread-per-world launch is unusable for slot
+    clouds (``k ~ 3 N`` with ``N`` in the thousands).
+    """
+    worldid, i, j = wp.tid()
+    if i >= nv or j >= nv:
+        return
+    s_h = float(0.0)
+    for r in range(k):
+        s_h += W[worldid, r, i] * W[worldid, r, j]
+    H[worldid, i, j] += s_h
+    if j == 0:
         s_c = float(0.0)
         for r in range(k):
             s_c += e[worldid, r] * W[worldid, r, i]
         c[worldid, i] -= s_c
-        for j in range(nv):
-            s_h = float(0.0)
-            for r in range(k):
-                s_h += W[worldid, r, i] * W[worldid, r, j]
-            H[worldid, i, j] += s_h
+        if i == 0:
+            mu_total[worldid] += mu[worldid]
 
 
 @wp.kernel
