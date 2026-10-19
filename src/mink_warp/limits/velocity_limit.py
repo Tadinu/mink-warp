@@ -32,7 +32,7 @@ class VelocityLimit(Limit):
         vmax: list[float] = []
         for joint_name, max_vel in velocities.items():
             jid = model.joint(joint_name).id
-            jnt_type = model.jnt_type[jid]
+            jnt_type = mujoco.mjtJoint(model.jnt_type[jid])
             if jnt_type not in _SCALAR_JOINTS:
                 raise ValueError(
                     f"VelocityLimit supports only hinge/slide joints; "

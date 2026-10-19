@@ -41,7 +41,7 @@ class ConfigurationLimit(Limit):
         lower: list[float] = []
         upper: list[float] = []
         for jnt in range(model.njnt):
-            jnt_type = model.jnt_type[jnt]
+            jnt_type = mujoco.mjtJoint(model.jnt_type[jnt])
             if not model.jnt_limited[jnt]:
                 continue
             if jnt_type == mujoco.mjtJoint.mjJNT_BALL:
