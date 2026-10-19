@@ -28,10 +28,10 @@ class ConfigurationLimit(Limit):
     """Box on ``dq`` keeping each limited joint inside its range."""
 
     def __init__(
-        self,
-        model: mujoco.MjModel,
-        gain: float = 0.95,
-        min_distance_from_limits: float = 0.0,
+            self,
+            model: mujoco.MjModel,
+            gain: float = 0.95,
+            min_distance_from_limits: float = 0.0,
     ):
         if not 0.0 < gain <= 1.0:
             raise InvalidGain(gain)
@@ -41,7 +41,7 @@ class ConfigurationLimit(Limit):
         lower: list[float] = []
         upper: list[float] = []
         for jnt in range(model.njnt):
-            jnt_type = model.jnt_type[jnt]
+            jnt_type = mujoco.mjtJoint(model.jnt_type[jnt])
             if not model.jnt_limited[jnt]:
                 continue
             if jnt_type == mujoco.mjtJoint.mjJNT_BALL:
@@ -87,11 +87,11 @@ class ConfigurationLimit(Limit):
         return arrs
 
     def apply_box(
-        self,
-        configuration: Configuration,
-        dt: float,
-        lo: wp.array,
-        hi: wp.array,
+            self,
+            configuration: Configuration,
+            dt: float,
+            lo: wp.array,
+            hi: wp.array,
     ) -> None:
         del dt  # Configuration limits are timestep-independent.
         if self.n_limited == 0:
@@ -115,12 +115,12 @@ class ConfigurationLimit(Limit):
             )
 
     def scatter_inequalities(
-        self,
-        configuration: Configuration,
-        dt: float,
-        row_offset: int,
-        G: wp.array,
-        h: wp.array,
+            self,
+            configuration: Configuration,
+            dt: float,
+            row_offset: int,
+            G: wp.array,
+            h: wp.array,
     ) -> None:
         del dt  # Configuration limits are timestep-independent.
         if self.n_limited == 0:

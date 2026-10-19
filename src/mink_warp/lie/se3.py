@@ -49,9 +49,9 @@ class SE3:
 
     @classmethod
     def from_rotation_and_translation(
-        cls,
-        rotation: SO3,
-        translation: np.ndarray,
+            cls,
+            rotation: SO3,
+            translation: np.ndarray,
     ) -> SE3:
         assert translation.shape == (SE3.space_dim,)
         return SE3(wxyz_xyz=np.concatenate([rotation.wxyz, translation]))
@@ -75,6 +75,38 @@ class SE3:
             rotation=SO3.from_matrix(matrix[:3, :3]),
             translation=matrix[:3, 3],
         )
+
+    @classmethod
+    def from_mocap_id(cls, data: mujoco.MjData, mocap_id: int) -> SE3:
+        return SE3.from_rotation_and_translation(
+            rotation=SO3(data.mocap_quat[mocap_id]),
+            translation=data.mocap_pos[mocap_id],
+        )
+
+    @classmethod
+    def from_site_id(cls, data: mujoco.MjData, site_id: int) -> SE3:
+        site_quat = np.empty(4)
+        mujoco.mju_mat2Quat(site_quat, data.site_xmat[site_id])
+        return SE3.from_rotation_and_translation(
+            rotation=SO3(site_quat),
+            translation=data.site_xpos[site_id],
+        )
+
+    @classmethod
+    def from_mocap_name(
+            cls, model: mujoco.MjModel, data: mujoco.MjData, mocap_name: str
+    ) -> SE3:
+        mocap_id = model.body(mocap_name).mocapid[0]
+        assert mocap_id != -1
+        return SE3.from_mocap_id(data, mocap_id)
+
+    @classmethod
+    def from_site_name(
+            cls, model: mujoco.MjModel, data: mujoco.MjData, site_name: str
+    ) -> SE3:
+        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
+        assert site_id != -1
+        return SE3.from_site_id(data, site_id)
 
     @classmethod
     def sample_uniform(cls) -> SE3:
@@ -106,9 +138,9 @@ class SE3:
         else:
             skew_omega = skew(tangent[3:])
             v_mat = (
-                np.eye(3, dtype=np.float64)
-                + (1.0 - np.cos(theta)) / t2 * skew_omega
-                + (theta - np.sin(theta)) / (t2 * theta) * (skew_omega @ skew_omega)
+                    np.eye(3, dtype=np.float64)
+                    + (1.0 - np.cos(theta)) / t2 * skew_omega
+                    + (theta - np.sin(theta)) / (t2 * theta) * (skew_omega @ skew_omega)
             )
         return cls.from_rotation_and_translation(
             rotation=rotation,
@@ -154,16 +186,16 @@ class SE3:
         skew_omega2 = skew_omega @ skew_omega
         if t2 < get_epsilon(t2.dtype):
             vinv_mat = (
-                np.eye(3, dtype=np.float64) - 0.5 * skew_omega + skew_omega2 / 12.0
+                    np.eye(3, dtype=np.float64) - 0.5 * skew_omega + skew_omega2 / 12.0
             )
         else:
             half_theta = 0.5 * theta
             vinv_mat = (
-                np.eye(3, dtype=np.float64)
-                - 0.5 * skew_omega
-                + (1.0 - 0.5 * theta * np.cos(half_theta) / np.sin(half_theta))
-                / t2
-                * skew_omega2
+                    np.eye(3, dtype=np.float64)
+                    - 0.5 * skew_omega
+                    + (1.0 - 0.5 * theta * np.cos(half_theta) / np.sin(half_theta))
+                    / t2
+                    * skew_omega2
             )
         tangent = np.empty(SE3.tangent_dim, dtype=np.float64)
         tangent[:3] = vinv_mat @ self.translation()
@@ -252,8 +284,8 @@ def _getQ(c: np.ndarray) -> np.ndarray:
     WVW = WV @ W
     VWW = VW @ W
     return (
-        +A * V
-        + B * (WV + VW + WVW)
-        - C * (VWW - VWW.T - 3.0 * WVW)
-        + D * (WVW @ W + W @ WVW)
+            +A * V
+            + B * (WV + VW + WVW)
+            - C * (VWW - VWW.T - 3.0 * WVW)
+            + D * (WVW @ W + W @ WVW)
     )

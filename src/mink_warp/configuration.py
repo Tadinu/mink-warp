@@ -1,6 +1,7 @@
 """Batched configuration space of a robot model on MuJoCo Warp."""
 
 from __future__ import annotations
+from typing import Optional
 
 import mujoco
 import mujoco_warp as mjwarp
@@ -35,20 +36,34 @@ class Configuration:
     """
 
     def __init__(
-        self,
-        model: mujoco.MjModel,
-        q: npt.ArrayLike | wp.array | None = None,
-        nworld: int = 1,
-        device: str | None = None,
+            self,
+            model: mujoco.MjModel,
+            data: Optional[mujoco.MjData] = None,
+            q: npt.ArrayLike | wp.array | None = None,
+            nworld: int = 1,
+            device: str | None = None,
     ):
         if nworld < 1:
             raise ValueError(f"nworld must be >= 1, got {nworld}")
 
         self.model = model
+        self.data = data if data else mujoco.MjData(model)
         self.nworld = nworld
         self.device = device if device is not None else str(wp.get_device())
         self._frame_id_cache: dict[tuple[str, str], int] = {}
         self._body_id_cache: dict[tuple[str, str], int] = {}
+
+        # Precompute limited joint indices for vectorized check_limits.
+        limited = model.jnt_limited.astype(bool)
+        limited &= model.jnt_type != mujoco.mjtJoint.mjJNT_FREE
+        is_ball = model.jnt_type == mujoco.mjtJoint.mjJNT_BALL
+        self._limited_jnt_ids = np.where(limited & ~is_ball)[0]
+        self._limited_qposadr = wp.array(model.jnt_qposadr[self._limited_jnt_ids], dtype=wp.int32)
+        self._limited_dofadr = wp.array(model.jnt_dofadr[self._limited_jnt_ids], dtype=wp.int32)
+        self._limited_range = wp.array(model.jnt_range[self._limited_jnt_ids], dtype=wp.float32)
+        self._limited_ball_jnt_ids = np.where(limited & is_ball)[0]
+        self._limited_ball_qposadr = wp.array(model.jnt_qposadr[self._limited_ball_jnt_ids], dtype=wp.int32)
+        self._limited_ball_max_angle = wp.array(model.jnt_range[self._limited_ball_jnt_ids, 1], dtype=wp.float32)
 
         with wp.ScopedDevice(self.device):
             self.wp_model = mjwarp.put_model(model)
@@ -69,16 +84,17 @@ class Configuration:
             q = np.broadcast_to(model.qpos0, (nworld, model.nq)).copy()
         self.update(q=q)
 
-    def update(self, q: npt.ArrayLike | wp.array | None = None) -> None:
+    def update(self, q: npt.ArrayLike | wp.array | None = None, kinematics_only: bool = True) -> None:
         """Run forward kinematics on device.
 
         Args:
             q: ``wp.array`` of shape ``(nworld, nq)`` or ``(nq,)``, or a NumPy
                 array (uploaded once). Prefer device arrays in the hot path.
         """
+        assert kinematics_only
         with wp.ScopedDevice(self.device):
             if q is not None:
-                self._assign_qpos(q)
+                self._assign_qpos(q, self._limited_qposadr)
             mjwarp.kinematics(self.wp_model, self.wp_data)
             mjwarp.com_pos(self.wp_model, self.wp_data)
 
@@ -117,7 +133,7 @@ class Configuration:
         return self._jac_body_wp
 
     def get_transform_frame_to_world(
-        self, frame_name: str, frame_type: str
+            self, frame_name: str, frame_type: str
     ) -> wp.array:
         """Frame poses on device as ``wxyz_xyz``, shape ``(nworld, 7)``.
 
@@ -136,18 +152,18 @@ class Configuration:
         return self._pose_wp
 
     def get_transform_frame_to_world_se3(
-        self, frame_name: str, frame_type: str
+            self, frame_name: str, frame_type: str
     ) -> SE3:
         """Host ``SE3`` for world 0 (optional convenience)."""
         pose = self.get_transform_frame_to_world(frame_name, frame_type).numpy()
         return SE3(wxyz_xyz=pose[0].astype(np.float64))
 
     def get_transform(
-        self,
-        frame_name: str,
-        frame_type: str,
-        root_name: str,
-        root_type: str,
+            self,
+            frame_name: str,
+            frame_type: str,
+            root_name: str,
+            root_type: str,
     ) -> wp.array:
         """Relative pose ``root^{-1} @ frame`` on device, shape ``(nworld, 7)``."""
         from .kernels.frame import copy_poses, relative_pose_wxyz_xyz
@@ -189,7 +205,7 @@ class Configuration:
             return self._q_out_wp
 
     def integrate_inplace(
-        self, velocity: npt.ArrayLike | wp.array, dt: float | None = None
+            self, velocity: npt.ArrayLike | wp.array, dt: float | None = None
     ) -> None:
         """Integrate velocity into ``q`` on device and refresh kinematics.
 
@@ -210,11 +226,11 @@ class Configuration:
             mjwarp.com_pos(self.wp_model, self.wp_data)
 
     def _integrate_qpos(
-        self,
-        *,
-        q_in: wp.array,
-        q_out: wp.array,
-        velocity: npt.ArrayLike | wp.array,
+            self,
+            *,
+            q_in: wp.array,
+            q_out: wp.array,
+            velocity: npt.ArrayLike | wp.array,
     ) -> None:
         """``q_out = integrate(q_in, velocity, dt_buf)`` using mjwarp."""
         v = self._as_velocity_batch(velocity)
@@ -266,13 +282,13 @@ class Configuration:
 
     # Internal.
 
-    def _assign_qpos(self, q: npt.ArrayLike | wp.array) -> None:
+    def _assign_qpos(self, q: npt.ArrayLike | wp.array, qpos_ids: wp.array) -> None:
         if isinstance(q, wp.array):
-            if q.shape == (self.nq,):
+            if q.shape == (qpos_ids,):
                 wp.launch(
                     broadcast_q,
                     dim=self.nworld,
-                    inputs=[q, self.nq],
+                    inputs=[q, qpos_ids],
                     outputs=[self.wp_data.qpos],
                 )
             elif q.shape == (self.nworld, self.nq):
@@ -283,18 +299,18 @@ class Configuration:
 
         # Optional host upload.
         q_wp = to_wp(q, dtype=float, device=self.device)
-        if q_wp.shape == (self.nq,):
+        if q_wp.shape == (len(qpos_ids),):
             wp.launch(
                 broadcast_q,
                 dim=self.nworld,
-                inputs=[q_wp, self.nq],
+                inputs=[q_wp, qpos_ids],
                 outputs=[self.wp_data.qpos],
             )
         elif q_wp.shape == (self.nworld, self.nq):
             wp.copy(self.wp_data.qpos, q_wp)
         else:
             raise ValueError(
-                f"Expected q shape ({self.nq},) or ({self.nworld}, {self.nq}), "
+                f"Expected q shape ({len(qpos_ids)},) or ({self.nworld}, {self.nq}), "
                 f"got {q_wp.shape}"
             )
 
@@ -318,7 +334,7 @@ class Configuration:
         return frame_id
 
     def _resolve_body_id(
-        self, frame_name: str, frame_type: str, frame_id: int
+            self, frame_name: str, frame_type: str, frame_id: int
     ) -> int:
         key = (frame_name, frame_type)
         cached = self._body_id_cache.get(key)
@@ -343,11 +359,11 @@ class Configuration:
         return self.wp_data.geom_xpos, self.wp_data.geom_xmat
 
     def _launch_frame_query(
-        self,
-        frame_type: str,
-        frame_id: int,
-        body_id: int,
-        xpos_arr: wp.array,
+            self,
+            frame_type: str,
+            frame_id: int,
+            body_id: int,
+            xpos_arr: wp.array,
     ) -> None:
         if frame_type == "body":
             wp.launch(

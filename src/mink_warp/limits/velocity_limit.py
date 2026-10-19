@@ -24,15 +24,15 @@ class VelocityLimit(Limit):
     """Box on ``dq`` bounding each selected joint's per-step displacement."""
 
     def __init__(
-        self,
-        model: mujoco.MjModel,
-        velocities: Mapping[str, npt.ArrayLike] = {},
+            self,
+            model: mujoco.MjModel,
+            velocities: Mapping[str, npt.ArrayLike] = {},
     ):
         dofadr: list[int] = []
         vmax: list[float] = []
         for joint_name, max_vel in velocities.items():
             jid = model.joint(joint_name).id
-            jnt_type = model.jnt_type[jid]
+            jnt_type = mujoco.mjtJoint(model.jnt_type[jid])
             if jnt_type not in _SCALAR_JOINTS:
                 raise ValueError(
                     f"VelocityLimit supports only hinge/slide joints; "
@@ -65,11 +65,11 @@ class VelocityLimit(Limit):
         return arrs
 
     def apply_box(
-        self,
-        configuration: Configuration,
-        dt: float,
-        lo: wp.array,
-        hi: wp.array,
+            self,
+            configuration: Configuration,
+            dt: float,
+            lo: wp.array,
+            hi: wp.array,
     ) -> None:
         if self.nb == 0:
             return
@@ -84,12 +84,12 @@ class VelocityLimit(Limit):
             )
 
     def scatter_inequalities(
-        self,
-        configuration: Configuration,
-        dt: float,
-        row_offset: int,
-        G: wp.array,
-        h: wp.array,
+            self,
+            configuration: Configuration,
+            dt: float,
+            row_offset: int,
+            G: wp.array,
+            h: wp.array,
     ) -> None:
         if self.nb == 0:
             return

@@ -7,12 +7,13 @@ import warp as wp
 from mujoco_warp._src.math import quat_sub
 from mujoco_warp._src.types import JointType
 
+
 @wp.kernel
 def posture_error(
-    q: wp.array2d[float],
-    target_q: wp.array2d[float],
-    nv: int,
-    error_out: wp.array2d[float],
+        q: wp.array2d[float],
+        target_q: wp.array2d[float],
+        nv: int,
+        error_out: wp.array2d[float],
 ):
     """Hinge/slide posture error: e = q - q* (matches mj_differentiatePos when nq==nv)."""
     worldid = wp.tid()
@@ -22,14 +23,14 @@ def posture_error(
 
 @wp.kernel
 def posture_error_joints(
-    q: wp.array2d[float],
-    target_q: wp.array2d[float],
-    jnt_type: wp.array[int],
-    jnt_qposadr: wp.array[int],
-    jnt_dofadr: wp.array[int],
-    njnt: int,
-    nv: int,
-    error_out: wp.array2d[float],
+        q: wp.array2d[float],
+        target_q: wp.array2d[float],
+        jnt_type: wp.array[int],
+        jnt_qposadr: wp.array[int],
+        jnt_dofadr: wp.array[int],
+        njnt: int,
+        nv: int,
+        error_out: wp.array2d[float],
 ):
     """Device ``mj_differentiatePos`` (dt=1): e = q ⊖ q* for all joint types."""
     worldid = wp.tid()
@@ -44,7 +45,7 @@ def posture_error_joints(
         if jtype == JointType.FREE:
             for k in range(3):
                 error_out[worldid, vadr + k] = (
-                    q[worldid, qadr + k] - target_q[worldid, qadr + k]
+                        q[worldid, qadr + k] - target_q[worldid, qadr + k]
                 )
             # MuJoCo/mjwarp quat layout in qpos is wxyz stored as wp.quat(w,x,y,z).
             qa = wp.quat(
@@ -89,8 +90,8 @@ def posture_error_joints(
 
 @wp.kernel
 def posture_jacobian_eye(
-    nv: int,
-    jac_out: wp.array3d[float],
+        nv: int,
+        jac_out: wp.array3d[float],
 ):
     worldid, i, j = wp.tid()
     if i == j:
@@ -101,11 +102,11 @@ def posture_jacobian_eye(
 
 @wp.kernel
 def zero_free_joint_rows(
-    error: wp.array2d[float],
-    jac: wp.array3d[float],
-    v_ids: wp.array[int],
-    n_free_v: int,
-    nv: int,
+        error: wp.array2d[float],
+        jac: wp.array3d[float],
+        v_ids: wp.array[int],
+        n_free_v: int,
+        nv: int,
 ):
     worldid = wp.tid()
     for k in range(n_free_v):
@@ -121,12 +122,9 @@ def zero_free_joint_rows(
 
 @wp.kernel
 def broadcast_q(
-    q: wp.array[float],
-    nq: int,
-    q_out: wp.array2d[float],
+        q: wp.array[float],
+        qpos_ids: wp.array[int],
+        q_out: wp.array2d[float]
 ):
-    worldid = wp.tid()
-    for i in range(nq):
-        q_out[worldid, i] = q[i]
-
-
+    worldid, i = wp.tid()
+    q_out[worldid, qpos_ids[i]] = q[i]
